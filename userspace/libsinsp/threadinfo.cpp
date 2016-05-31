@@ -311,6 +311,7 @@ void sinsp_threadinfo::init(scap_threadinfo* pi)
 	m_pid = pi->pid;
 	m_ptid = pi->ptid;
 	m_sid = pi->sid;
+	m_sname = pi->sname;
 
 	m_comm = pi->comm;
 	m_exe = pi->exe;

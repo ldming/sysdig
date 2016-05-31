@@ -223,6 +223,7 @@ int32_t scap_proc_fill_info_from_stats(char* procdirname, struct scap_threadinfo
 	tinfo->pfmajor = pfmajor;
 	tinfo->pfminor = pfminor;
 	tinfo->sid = (uint64_t) sid;
+	// XXX/mstemm need a way to figure out the session leader's comm here.
 
 	fclose(f);
 	return SCAP_SUCCESS;

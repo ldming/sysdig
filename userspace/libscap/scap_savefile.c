@@ -184,6 +184,7 @@ static int32_t scap_write_proclist(scap_t *handle, gzFile f)
 				sizeof(uint64_t) +	// pid
 				sizeof(uint64_t) +	// ptid
 				sizeof(uint64_t) +	// sid
+				2 + strnlen(tinfo->sname, SCAP_MAX_PATH_SIZE) +
 				2 + strnlen(tinfo->comm, SCAP_MAX_PATH_SIZE) +
 				2 + strnlen(tinfo->exe, SCAP_MAX_PATH_SIZE) +
 				2 + tinfo->args_len +
@@ -232,11 +233,14 @@ static int32_t scap_write_proclist(scap_t *handle, gzFile f)
 		argslen = tinfo->args_len;
 		cwdlen = (uint16_t)strnlen(tinfo->cwd, SCAP_MAX_PATH_SIZE);
 		rootlen = (uint16_t)strnlen(tinfo->root, SCAP_MAX_PATH_SIZE);
+		snamelen = (uint16_t)strnlen(tinfo->sname, SCAP_MAX_PATH_SIZE);
 
 		if(gzwrite(f, &(tinfo->tid), sizeof(uint64_t)) != sizeof(uint64_t) ||
 		        gzwrite(f, &(tinfo->pid), sizeof(uint64_t)) != sizeof(uint64_t) ||
 		        gzwrite(f, &(tinfo->ptid), sizeof(uint64_t)) != sizeof(uint64_t) ||
 		        gzwrite(f, &(tinfo->sid), sizeof(uint64_t)) != sizeof(uint64_t) ||
+		        gzwrite(f, &snamelen, sizeof(uint16_t)) != sizeof(uint16_t) ||
+		        gzwrite(f, tinfo->sname, snamelen) != snamelen ||
 		        gzwrite(f, &commlen, sizeof(uint16_t)) != sizeof(uint16_t) ||
 		        gzwrite(f, tinfo->comm, commlen) != commlen ||
 		        gzwrite(f, &exelen, sizeof(uint16_t)) != sizeof(uint16_t) ||
@@ -817,6 +821,48 @@ static int32_t scap_read_machine_info(scap_t *handle, gzFile f, uint32_t block_l
 }
 
 //
+// Read a string, consisting of string length + string, from the file
+// f into the buffer pointed to by buf. Increments *readsize by the
+// number of bytes read. If stringlen is non-NULL, sets *stringlen to the
+// length of the string in buf.
+//
+// Returns SCAP_SUCCESS on success, SCAP_FAILURE on failure.
+//
+static scap_read_string(scap_t *handle, gzFile f,
+			char *buf, size_t buflen,
+			const char *bufname, uint16_t *stringlen, size_t *totreadsize)
+{
+	size_t readsize;
+	uint16_t stlen;
+
+	readsize = gzread(f, &(stlen), sizeof(uint16_t));
+	CHECK_READ_SIZE(readsize, sizeof(uint16_t));
+
+	if(stlen > buflen)
+	{
+		snprintf(handle->m_lasterr, SCAP_LASTERR_SIZE, "invalid %slen %d", bufname, stlen);
+		return SCAP_FAILURE;
+	}
+
+	(*totreadsize) += readsize;
+
+	readsize = gzread(f, buf, stlen);
+	CHECK_READ_SIZE(readsize, stlen);
+
+	// the string is not null-terminated on file
+	buf[stlen] = 0;
+
+	if (stringlen != NULL)
+	{
+		*stringlen = stlen;
+	}
+
+	(*totreadsize) += readsize;
+
+	return SCAP_SUCCESS;
+}
+
+//
 // Parse a process list block
 //
 static int32_t scap_read_proclist(scap_t *handle, gzFile f, uint32_t block_length, uint32_t block_type)
@@ -829,6 +875,7 @@ static int32_t scap_read_proclist(scap_t *handle, gzFile f, uint32_t block_lengt
 	uint32_t padding;
 	int32_t uth_status = SCAP_SUCCESS;
 	struct scap_threadinfo *ntinfo;
+	int32_t rc;
 
 	tinfo.fdlist = NULL;
 	tinfo.flags = 0;
@@ -887,6 +934,14 @@ static int32_t scap_read_proclist(scap_t *handle, gzFile f, uint32_t block_lengt
 			CHECK_READ_SIZE(readsize, sizeof(uint64_t));
 
 			totreadsize += readsize;
+
+			if ((rc = scap_read_string(handle, f,
+						   tinfo.sname, SCAP_MAX_PATH_SIZE,
+						   "sname", NULL, &totreadsize)) != SCAP_SUCCESS)
+			{
+				return rc;
+			}
+
 			break;
 
 		default:
@@ -898,91 +953,42 @@ static int32_t scap_read_proclist(scap_t *handle, gzFile f, uint32_t block_lengt
 		//
 		// comm
 		//
-		readsize = gzread(f, &(stlen), sizeof(uint16_t));
-		CHECK_READ_SIZE(readsize, sizeof(uint16_t));
-
-		if(stlen > SCAP_MAX_PATH_SIZE)
+		if ((rc = scap_read_string(handle, f,
+					   tinfo.comm, SCAP_MAX_PATH_SIZE,
+					   "comm", NULL, &totreadsize)) != SCAP_SUCCESS)
 		{
-			snprintf(handle->m_lasterr, SCAP_LASTERR_SIZE, "invalid commlen %d", stlen);
-			return SCAP_FAILURE;
+			return rc;
 		}
-
-		totreadsize += readsize;
-
-		readsize = gzread(f, tinfo.comm, stlen);
-		CHECK_READ_SIZE(readsize, stlen);
-
-		// the string is not null-terminated on file
-		tinfo.comm[stlen] = 0;
-
-		totreadsize += readsize;
 
 		//
 		// exe
 		//
-		readsize = gzread(f, &(stlen), sizeof(uint16_t));
-		CHECK_READ_SIZE(readsize, sizeof(uint16_t));
-
-		if(stlen > SCAP_MAX_PATH_SIZE)
+		if ((rc = scap_read_string(handle, f,
+					   tinfo.exe, SCAP_MAX_PATH_SIZE,
+					   "exe", NULL, &totreadsize)) != SCAP_SUCCESS)
 		{
-			snprintf(handle->m_lasterr, SCAP_LASTERR_SIZE, "invalid exelen %d", stlen);
-			return SCAP_FAILURE;
+			return rc;
 		}
-
-		totreadsize += readsize;
-
-		readsize = gzread(f, tinfo.exe, stlen);
-		CHECK_READ_SIZE(readsize, stlen);
-
-		// the string is not null-terminated on file
-		tinfo.exe[stlen] = 0;
-
-		totreadsize += readsize;
 
 		//
 		// args
 		//
-		readsize = gzread(f, &(stlen), sizeof(uint16_t));
-		CHECK_READ_SIZE(readsize, sizeof(uint16_t));
-
-		if(stlen > SCAP_MAX_ARGS_SIZE)
+		if ((rc = scap_read_string(handle, f,
+					   tinfo.args, SCAP_MAX_ARGS_SIZE,
+					   "args", &(tinfo.args_len), &totreadsize)) != SCAP_SUCCESS)
 		{
-			snprintf(handle->m_lasterr, SCAP_LASTERR_SIZE, "invalid argslen %d", stlen);
-			return SCAP_FAILURE;
+			return rc;
 		}
-
-		totreadsize += readsize;
-
-		readsize = gzread(f, tinfo.args, stlen);
-		CHECK_READ_SIZE(readsize, stlen);
-
-		// the string is not null-terminated on file
-		tinfo.args[stlen] = 0;
-		tinfo.args_len = stlen;
-
-		totreadsize += readsize;
 
 		//
 		// cwd
 		//
-		readsize = gzread(f, &(stlen), sizeof(uint16_t));
-		CHECK_READ_SIZE(readsize, sizeof(uint16_t));
-
-		if(stlen > SCAP_MAX_PATH_SIZE)
+		if ((rc = scap_read_string(handle, f,
+					   tinfo.cwd, SCAP_MAX_PATH_SIZE,
+					   "cwd", NULL, &totreadsize)) != SCAP_SUCCESS)
 		{
-			snprintf(handle->m_lasterr, SCAP_LASTERR_SIZE, "invalid cwdlen %d", stlen);
-			return SCAP_FAILURE;
+			return rc;
 		}
-
-		totreadsize += readsize;
-
-		readsize = gzread(f, tinfo.cwd, stlen);
-		CHECK_READ_SIZE(readsize, stlen);
-
-		// the string is not null-terminated on file
-		tinfo.cwd[stlen] = 0;
-
-		totreadsize += readsize;
 
 		//
 		// fdlimit
@@ -1077,25 +1083,12 @@ static int32_t scap_read_proclist(scap_t *handle, gzFile f, uint32_t block_lengt
 				//
 				// env
 				//
-				readsize = gzread(f, &(stlen), sizeof(uint16_t));
-				CHECK_READ_SIZE(readsize, sizeof(uint16_t));
-
-				if(stlen > SCAP_MAX_ENV_SIZE)
+				if ((rc = scap_read_string(handle, f,
+							   tinfo.env, SCAP_MAX_ENV_SIZE,
+							   "env", &(tinfo.env_len), &totreadsize)) != SCAP_SUCCESS)
 				{
-					snprintf(handle->m_lasterr, SCAP_LASTERR_SIZE, "invalid envlen %d", stlen);
-					return SCAP_FAILURE;
+					return rc;
 				}
-
-				totreadsize += readsize;
-
-				readsize = gzread(f, tinfo.env, stlen);
-				CHECK_READ_SIZE(readsize, stlen);
-
-				// the string is not null-terminated on file
-				tinfo.env[stlen] = 0;
-				tinfo.env_len = stlen;
-
-				totreadsize += readsize;
 			}
 
 			if(block_type == PL_BLOCK_TYPE_V4 ||
@@ -1121,6 +1114,11 @@ static int32_t scap_read_proclist(scap_t *handle, gzFile f, uint32_t block_lengt
 				//
 				// cgroups
 				//
+
+				// Note: *not* using scap_read_string here as this is the
+				// only string that is not explicitly null-terminated,
+				// and I didn't want to add an option just for null-termination.
+
 				readsize = gzread(f, &(stlen), sizeof(uint16_t));
 				CHECK_READ_SIZE(readsize, sizeof(uint16_t));
 
@@ -1141,24 +1139,13 @@ static int32_t scap_read_proclist(scap_t *handle, gzFile f, uint32_t block_lengt
 				if(block_type == PL_BLOCK_TYPE_V5 ||
 				   block_type == PL_BLOCK_TYPE_V6)
 				{
-					readsize = gzread(f, &(stlen), sizeof(uint16_t));
-					CHECK_READ_SIZE(readsize, sizeof(uint16_t));
 
-					if(stlen > SCAP_MAX_PATH_SIZE)
+					if ((rc = scap_read_string(handle, f,
+								   tinfo.root, SCAP_MAX_PATH_SIZE,
+								   "root", NULL, &totreadsize)) != SCAP_SUCCESS)
 					{
-						snprintf(handle->m_lasterr, SCAP_LASTERR_SIZE, "invalid rootlen %d", stlen);
-						return SCAP_FAILURE;
+						return rc;
 					}
-
-					totreadsize += readsize;
-
-					readsize = gzread(f, tinfo.root, stlen);
-					CHECK_READ_SIZE(readsize, stlen);
-
-					// the string is not null-terminated on file
-					tinfo.root[stlen] = 0;
-
-					totreadsize += readsize;
 				}
 			}
 			break;
@@ -1626,68 +1613,32 @@ static int32_t scap_read_userlist(scap_t *handle, gzFile f, uint32_t block_lengt
 			//
 			// name
 			//
-			readsize = gzread(f, &(stlen), sizeof(uint16_t));
-			CHECK_READ_SIZE(readsize, sizeof(uint16_t));
-
-			if(stlen >= MAX_CREDENTIALS_STR_LEN)
+			if ((rc = scap_read_string(handle, f,
+						   puser->name, MAX_CREDENTIALS_STR_LEN,
+						   "user name ", NULL, &totreadsize)) != SCAP_SUCCESS)
 			{
-				snprintf(handle->m_lasterr, SCAP_LASTERR_SIZE, "invalid user name len %d", stlen);
-				return SCAP_FAILURE;
+				return rc;
 			}
-
-			totreadsize += readsize;
-
-			readsize = gzread(f, puser->name, stlen);
-			CHECK_READ_SIZE(readsize, stlen);
-
-			// the string is not null-terminated on file
-			puser->name[stlen] = 0;
-
-			totreadsize += readsize;
 
 			//
 			// homedir
 			//
-			readsize = gzread(f, &(stlen), sizeof(uint16_t));
-			CHECK_READ_SIZE(readsize, sizeof(uint16_t));
-
-			if(stlen >= MAX_CREDENTIALS_STR_LEN)
+			if ((rc = scap_read_string(handle, f,
+						   puser->homedir, MAX_CREDENTIALS_STR_LEN,
+						   "user homedir ", NULL, &totreadsize)) != SCAP_SUCCESS)
 			{
-				snprintf(handle->m_lasterr, SCAP_LASTERR_SIZE, "invalid user homedir len %d", stlen);
-				return SCAP_FAILURE;
+				return rc;
 			}
-
-			totreadsize += readsize;
-
-			readsize = gzread(f, puser->homedir, stlen);
-			CHECK_READ_SIZE(readsize, stlen);
-
-			// the string is not null-terminated on file
-			puser->homedir[stlen] = 0;
-
-			totreadsize += readsize;
 
 			//
 			// shell
 			//
-			readsize = gzread(f, &(stlen), sizeof(uint16_t));
-			CHECK_READ_SIZE(readsize, sizeof(uint16_t));
-
-			if(stlen >= MAX_CREDENTIALS_STR_LEN)
+			if ((rc = scap_read_string(handle, f,
+						   puser->shell, MAX_CREDENTIALS_STR_LEN,
+						   "user shell ", NULL, &totreadsize)) != SCAP_SUCCESS)
 			{
-				snprintf(handle->m_lasterr, SCAP_LASTERR_SIZE, "invalid user shell len %d", stlen);
-				return SCAP_FAILURE;
+				return rc;
 			}
-
-			totreadsize += readsize;
-
-			readsize = gzread(f, puser->shell, stlen);
-			CHECK_READ_SIZE(readsize, stlen);
-
-			// the string is not null-terminated on file
-			puser->shell[stlen] = 0;
-
-			totreadsize += readsize;
 		}
 		else
 		{
@@ -1714,24 +1665,12 @@ static int32_t scap_read_userlist(scap_t *handle, gzFile f, uint32_t block_lengt
 			//
 			// name
 			//
-			readsize = gzread(f, &(stlen), sizeof(uint16_t));
-			CHECK_READ_SIZE(readsize, sizeof(uint16_t));
-
-			if(stlen >= MAX_CREDENTIALS_STR_LEN)
+			if ((rc = scap_read_string(handle, f,
+						   pgroup->name, MAX_CREDENTIALS_STR_LEN,
+						   "group name ", NULL, &totreadsize)) != SCAP_SUCCESS)
 			{
-				snprintf(handle->m_lasterr, SCAP_LASTERR_SIZE, "invalid group name len %d", stlen);
-				return SCAP_FAILURE;
+				return rc;
 			}
-
-			totreadsize += readsize;
-
-			readsize = gzread(f, pgroup->name, stlen);
-			CHECK_READ_SIZE(readsize, stlen);
-
-			// the string is not null-terminated on file
-			pgroup->name[stlen] = 0;
-
-			totreadsize += readsize;
 		}
 	}
 

@@ -1097,8 +1097,9 @@ void sinsp_parser::parse_clone_exit(sinsp_evt *evt)
 		// Copy the root from the parent
 		tinfo.m_root = ptinfo->m_root;
 
-		// Copy the session id from the parent
+		// Copy the session id/name from the parent
 		tinfo.m_sid = ptinfo->m_sid;
+		tinfo.m_sname = ptinfo->m_sname;
 	}
 	else
 	{
@@ -1131,6 +1132,7 @@ void sinsp_parser::parse_clone_exit(sinsp_evt *evt)
 			tinfo.m_args = ptinfo->m_args;
 			tinfo.m_root = ptinfo->m_root;
 			tinfo.m_sid = ptinfo->m_sid;
+			tinfo.m_sname = ptinfo->m_sname;
 		}
 		else
 		{
@@ -4074,7 +4076,13 @@ void sinsp_parser::parse_setsid_exit(sinsp_evt *evt)
 
 	if(retval >= 0)
 	{
-		evt->get_thread_info()->m_sid = retval;
+		sinsp_threadinfo* tinfo = evt->get_thread_info();
+
+		tinfo->m_sid = retval;
+
+		// Relying on the convention that a process becomes
+		// session leader upon a successful call to setsid().
+		tinfo->m_sname = tinfo->get_comm();
 	}
 }
 
