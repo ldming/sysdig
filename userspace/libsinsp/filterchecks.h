@@ -95,9 +95,10 @@ public:
 	virtual const filtercheck_field_info* get_field_info();
 
 	//
-	// Extract the field from the event
+        // Extract the field from the event. In sanitize_strings is true, any
+        // string values are sanitized to remove nonprintable characters.
 	//
-	virtual uint8_t* extract(sinsp_evt *evt, OUT uint32_t* len) = 0;
+	virtual uint8_t* extract(sinsp_evt *evt, OUT uint32_t* len, bool sanitize_strings = true) = 0;
 
 	//
 	// Extract the field as json from the event (by default, fall
@@ -212,7 +213,7 @@ public:
 		return NULL;
 	}
 
-	uint8_t* extract(sinsp_evt *evt, OUT uint32_t* len)
+	uint8_t* extract(sinsp_evt *evt, OUT uint32_t* len, bool sanitize_strings = true)
 	{
 		ASSERT(false);
 		return NULL;
@@ -288,7 +289,7 @@ public:
 
 	sinsp_filter_check_fd();
 	sinsp_filter_check* allocate_new();
-	uint8_t* extract(sinsp_evt *evt, OUT uint32_t* len);
+	uint8_t* extract(sinsp_evt *evt, OUT uint32_t* len, bool sanitize_strings = true);
 	bool compare_ip(sinsp_evt *evt);
 	bool compare_net(sinsp_evt *evt);
 	bool compare_port(sinsp_evt *evt);
@@ -302,8 +303,8 @@ public:
 	uint32_t m_tbool;
 
 private:
-	uint8_t* extract_from_null_fd(sinsp_evt *evt, OUT uint32_t* len);
-	bool extract_fdname_from_creator(sinsp_evt *evt, OUT uint32_t* len);
+	uint8_t* extract_from_null_fd(sinsp_evt *evt, OUT uint32_t* len, bool sanitize_strings);
+	bool extract_fdname_from_creator(sinsp_evt *evt, OUT uint32_t* len, bool sanitize_strings);
 	bool extract_fd(sinsp_evt *evt);
 };
 
@@ -361,7 +362,7 @@ public:
 	sinsp_filter_check_thread();
 	sinsp_filter_check* allocate_new();
 	int32_t parse_field_name(const char* str, bool alloc_state);
-	uint8_t* extract(sinsp_evt *evt, OUT uint32_t* len);
+	uint8_t* extract(sinsp_evt *evt, OUT uint32_t* len, bool sanitize_strings = true);
 	bool compare(sinsp_evt *evt);
 
 private:
@@ -462,7 +463,7 @@ public:
 	void parse_filter_value(const char* str, uint32_t len, uint8_t *storage, uint32_t storage_len);
 	void validate_filter_value(const char* str, uint32_t len);
 	const filtercheck_field_info* get_field_info();
-	uint8_t* extract(sinsp_evt *evt, OUT uint32_t* len);
+	uint8_t* extract(sinsp_evt *evt, OUT uint32_t* len, bool sanitize_strings = true);
 	Json::Value extract_as_js(sinsp_evt *evt, OUT uint32_t* len);
 	bool compare(sinsp_evt *evt);
 
@@ -512,7 +513,7 @@ public:
 
 	sinsp_filter_check_user();
 	sinsp_filter_check* allocate_new();
-	uint8_t* extract(sinsp_evt *evt, OUT uint32_t* len);
+	uint8_t* extract(sinsp_evt *evt, OUT uint32_t* len, bool sanitize_strings = true);
 
 	uint32_t m_uid;
 	string m_strval;
@@ -532,7 +533,7 @@ public:
 
 	sinsp_filter_check_group();
 	sinsp_filter_check* allocate_new();
-	uint8_t* extract(sinsp_evt *evt, OUT uint32_t* len);
+	uint8_t* extract(sinsp_evt *evt, OUT uint32_t* len, bool sanitize_strings = true);
 
 	uint32_t m_gid;
 	string m_name;
@@ -574,7 +575,7 @@ public:
 	~sinsp_filter_check_tracer();
 	sinsp_filter_check* allocate_new();
 	int32_t parse_field_name(const char* str, bool alloc_state);
-	uint8_t* extract(sinsp_evt *evt, OUT uint32_t* len);
+	uint8_t* extract(sinsp_evt *evt, OUT uint32_t* len, bool sanitize_strings = true);
 
 private:
 	int32_t extract_arg(string fldname, string val, OUT const struct ppm_param_info** parinfo);
@@ -635,7 +636,7 @@ public:
 	~sinsp_filter_check_evtin();
 	int32_t parse_field_name(const char* str, bool alloc_state);
 	sinsp_filter_check* allocate_new();
-	uint8_t* extract(sinsp_evt *evt, OUT uint32_t* len);
+	uint8_t* extract(sinsp_evt *evt, OUT uint32_t* len, bool sanitize_strings = true);
 	bool compare(sinsp_evt *evt);
 
 	uint64_t m_u64val;
@@ -675,7 +676,7 @@ public:
 	sinsp_filter_check* allocate_new();
 	void set_text(string text);
 	int32_t parse_field_name(const char* str, bool alloc_state);
-	uint8_t* extract(sinsp_evt *evt, OUT uint32_t* len);
+	uint8_t* extract(sinsp_evt *evt, OUT uint32_t* len, bool sanitize_strings = true);
 
 	// XXX this is overkill and wasted for most of the fields.
 	// It could be optimized by dynamically allocating the right amount
@@ -705,7 +706,7 @@ public:
 	sinsp_filter_check_syslog();
 	sinsp_filter_check* allocate_new();
 	int32_t parse_field_name(const char* str, bool alloc_state);
-	uint8_t* extract(sinsp_evt *evt, OUT uint32_t* len);
+	uint8_t* extract(sinsp_evt *evt, OUT uint32_t* len, bool sanitize_strings = true);
 
 	sinsp_decoder_syslog* m_decoder;
 	uint32_t m_gid;
@@ -725,7 +726,7 @@ public:
 
 	sinsp_filter_check_container();
 	sinsp_filter_check* allocate_new();
-	uint8_t* extract(sinsp_evt *evt, OUT uint32_t* len);
+	uint8_t* extract(sinsp_evt *evt, OUT uint32_t* len, bool sanitize_strings = true);
 
 private:
 	string m_tstr;
@@ -756,7 +757,7 @@ public:
 		m_print_format = print_format;
 	}
 	int32_t parse_field_name(const char* str, bool alloc_state);
-	uint8_t* extract(sinsp_evt *evt, OUT uint32_t* len);
+	uint8_t* extract(sinsp_evt *evt, OUT uint32_t* len, bool sanitize_strings = true);
 	char* tostring_nice(sinsp_evt* evt, uint32_t str_len, uint64_t time_delta);
 
 private:
@@ -785,7 +786,7 @@ public:
 
 	sinsp_filter_check_utils();
 	sinsp_filter_check* allocate_new();
-	uint8_t* extract(sinsp_evt *evt, OUT uint32_t* len);
+	uint8_t* extract(sinsp_evt *evt, OUT uint32_t* len, bool sanitize_strings = true);
 
 private:
 	uint64_t m_cnt;
@@ -809,7 +810,7 @@ public:
 
 	sinsp_filter_check_fdlist();
 	sinsp_filter_check* allocate_new();
-	uint8_t* extract(sinsp_evt *evt, OUT uint32_t* len);
+	uint8_t* extract(sinsp_evt *evt, OUT uint32_t* len, bool sanitize_strings = true);
 
 private:
 	string m_strval;
@@ -842,7 +843,7 @@ public:
 	sinsp_filter_check_k8s();
 	sinsp_filter_check* allocate_new();
 	int32_t parse_field_name(const char* str, bool alloc_state);
-	uint8_t* extract(sinsp_evt *evt, OUT uint32_t* len);
+	uint8_t* extract(sinsp_evt *evt, OUT uint32_t* len, bool sanitize_strings = true);
 
 private:
 	int32_t extract_arg(const string& fldname, const string& val);
@@ -879,7 +880,7 @@ public:
 	sinsp_filter_check_mesos();
 	sinsp_filter_check* allocate_new();
 	int32_t parse_field_name(const char* str, bool alloc_state);
-	uint8_t* extract(sinsp_evt *evt, OUT uint32_t* len);
+	uint8_t* extract(sinsp_evt *evt, OUT uint32_t* len, bool sanitize_strings = true);
 
 private:
 
